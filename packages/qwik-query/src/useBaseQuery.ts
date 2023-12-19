@@ -5,10 +5,7 @@ import {
   useVisibleTask$,
   type NoSerialize,
 } from '@builder.io/qwik'
-import type {
-  DefaultedQueryObserverOptions,
-  QueryKey,
-} from '@tanstack/query-core'
+import type { DefaultError, QueryKey } from '@tanstack/query-core'
 import {
   InfiniteQueryObserver,
   QueryClient,
@@ -17,67 +14,112 @@ import {
   notifyManager,
   type DehydratedState,
 } from '@tanstack/query-core'
-import type { QueryStore } from './types'
+import type {
+  QueryStore,
+  QwikUseBaseQueryOptions,
+  UseBaseQueryOptions,
+} from './types'
 import { createQueryClient } from './useQueryClient'
+import { deqrlify, qrlify } from './utils'
 
 export enum ObserverType {
   base,
   inifinite,
 }
 
-export const useBaseQuery = (
+export function useBaseQuery<
+  TQueryFnData = unknown,
+  TError = DefaultError,
+  TData = TQueryFnData,
+  TQueryData = TQueryFnData,
+  TQueryKey extends QueryKey = QueryKey,
+  TPageParam = never,
+>(
   observerType: ObserverType,
-  options: any,
-  // | DefaultedQueryObserverOptions<unknown, Error, unknown, unknown, QueryKey>
-  // | InfiniteQueryObserverOptions<unknown, Error, unknown, unknown, QueryKey>,
+  options: QwikUseBaseQueryOptions<
+    TQueryFnData,
+    TError,
+    TData,
+    TQueryData,
+    TQueryKey,
+    TPageParam
+  >,
   initialState?: DehydratedState,
-) => {
+) {
   const queryClient = new QueryClient()
   if (initialState) {
     hydrate(queryClient, initialState)
   }
-  const store = useStore<any>({
-    //QueryStore
+  const store = useStore({
     result: initialState
-      ? queryClient.getQueryState(options.queryKey || [])
+      ? queryClient.getQueryState<TQueryFnData, TError>(options.queryKey || [])
       : undefined,
     options,
   })
-  const observerSig = useSignal<NoSerialize<QueryObserver>>()
+  const observerSig =
+    useSignal<
+      NoSerialize<
+        QueryObserver<TQueryFnData, TError, TData, TQueryData, TQueryKey>
+      >
+    >()
 
-  useVisibleTask$(({ cleanup }) => {
+  useVisibleTask$(async ({ cleanup }) => {
+    const options = await deqrlify(store.options)
     const { observer, unsubscribe, defaultedOptions } = createQueryObserver(
       store,
       options,
       observerType,
     )
     observerSig.value = observer
-    store.options = defaultedOptions
+    store.options = qrlify(defaultedOptions) as QwikUseBaseQueryOptions<
+      TQueryFnData,
+      TError,
+      TData,
+      TQueryData,
+      TQueryKey,
+      TPageParam
+    >
 
     cleanup(unsubscribe)
   })
 
-  useVisibleTask$(({ track }) => {
+  useVisibleTask$(async ({ track }) => {
     track(() => store.options)
+
     if (observerSig.value) {
-      observerSig.value.setOptions(store.options || options)
+      observerSig.value.setOptions(await deqrlify(store.options || options))
     }
   })
 
   return store
 }
 
-const createQueryObserver = (
-  store: QueryStore,
-  options: DefaultedQueryObserverOptions<
-    unknown,
-    Error,
-    unknown,
-    unknown,
-    QueryKey
+function createQueryObserver<
+  TQueryFnData = unknown,
+  TError = DefaultError,
+  TData = TQueryFnData,
+  TQueryData = TQueryFnData,
+  TQueryKey extends QueryKey = QueryKey,
+  TPageParam = never,
+>(
+  store: QueryStore<
+    TQueryFnData,
+    TError,
+    TData,
+    TQueryData,
+    TQueryKey,
+    TPageParam
+  >,
+  options: UseBaseQueryOptions<
+    TQueryFnData,
+    TError,
+    TData,
+    TQueryData,
+    TQueryKey,
+    TPageParam
   >,
   observerType: ObserverType,
-) => {
+) {
   const Observer =
     observerType === ObserverType.base
       ? QueryObserver
@@ -101,7 +143,7 @@ const createQueryObserver = (
   }
 
   const unsubscribe = observer.subscribe(
-    notifyManager.batchCalls((result: any) => {
+    notifyManager.batchCalls((result) => {
       patchAndAssignResult(
         observerType,
         store,
