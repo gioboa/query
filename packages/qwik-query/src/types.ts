@@ -1,7 +1,6 @@
 import type { QRL } from '@builder.io/qwik'
 import {
   QueryKey,
-  QueryFunctionContext,
   DefaultError,
   QueryObserverOptions,
   WithRequired,
@@ -15,46 +14,72 @@ import {
   MutationObserverOptions,
   MutateFunction,
   MutationObserverResult,
-  DefaultedQueryObserverOptions,
+  QueryState,
 } from '@tanstack/query-core'
 
-type QwikQueryFunction<
-  T = unknown,
+type QRLifyProperty<T> = T extends (...args: any[]) => any ? QRL<T> : QRLify<T>
+
+export type QRLify<T> = { [K in keyof T]: QRLifyProperty<T[K]> }
+
+export type DeQRLify<T> = T extends QRLify<infer U> ? U : T
+
+export type UseBaseQueryOptions<
+  TQueryFnData = unknown,
+  TError = DefaultError,
+  TData = TQueryFnData,
+  TQueryData = TQueryFnData,
   TQueryKey extends QueryKey = QueryKey,
-  TPageParam = any,
-> = QRL<
-  (context: QueryFunctionContext<TQueryKey, TPageParam>) => T | Promise<T>
+  TPageParam = never,
+> = WithRequired<
+  QueryObserverOptions<
+    TQueryFnData,
+    TError,
+    TData,
+    TQueryData,
+    TQueryKey,
+    TPageParam
+  >,
+  'queryKey'
 >
 
-type QwikQueryObserverOptions<
+export type QwikUseBaseQueryOptions<
   TQueryFnData = unknown,
   TError = DefaultError,
   TData = TQueryFnData,
   TQueryData = TQueryFnData,
   TQueryKey extends QueryKey = QueryKey,
-> = Omit<
-  QueryObserverOptions<TQueryFnData, TError, TData, TQueryData, TQueryKey>,
-  'queryFn'
-> & {
-  queryFn: QwikQueryFunction<TQueryFnData, TQueryKey>
+  TPageParam = never,
+> = QRLify<
+  UseBaseQueryOptions<
+    TQueryFnData,
+    TError,
+    TData,
+    TQueryData,
+    TQueryKey,
+    TPageParam
+  >
+>
+
+export type QueryStore<
+  TQueryFnData = unknown,
+  TError = DefaultError,
+  TData = TQueryFnData,
+  TQueryData = TQueryFnData,
+  TQueryKey extends QueryKey = QueryKey,
+  TPageParam = never,
+> = {
+  result: QueryState<TQueryFnData, TError> | undefined
+  options: QwikUseBaseQueryOptions<
+    TQueryFnData,
+    TError,
+    TData,
+    TQueryData,
+    TQueryKey,
+    TPageParam
+  >
 }
 
-export interface QwikUseBaseQueryOptions<
-  TQueryFnData = unknown,
-  TError = DefaultError,
-  TData = TQueryFnData,
-  TQueryData = TQueryFnData,
-  TQueryKey extends QueryKey = QueryKey,
-> extends WithRequired<
-    QwikQueryObserverOptions<
-      TQueryFnData,
-      TError,
-      TData,
-      TQueryData,
-      TQueryKey
-    >,
-    'queryKey'
-  > {}
+// ———
 
 export interface UseQueryOptions<
   TQueryFnData = unknown,
@@ -203,12 +228,5 @@ export type UseMutationResult<
   TVariables = unknown,
   TContext = unknown,
 > = UseBaseMutationResult<TData, TError, TVariables, TContext>
-
-export type QueryStore = {
-  result: any
-  options:
-    | DefaultedQueryObserverOptions<unknown, Error, unknown, unknown, QueryKey>
-    | InfiniteQueryObserverOptions<unknown, Error, unknown, unknown, QueryKey>
-}
 
 type Override<A, B> = { [K in keyof A]: K extends keyof B ? B[K] : A[K] }
